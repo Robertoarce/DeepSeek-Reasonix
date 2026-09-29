@@ -132,6 +132,38 @@ func TestGateNoticeCarriesTheNeedAsItsDetail(t *testing.T) {
 	t.Fatalf("no await_user notice among %+v", notices())
 }
 
+// The same need, escaped twice: a model that writes the break as `\\n` inside
+// the JSON string leaves a backslash and an `n` in the value. The notice draws
+// whatever the detail holds, so the pair has to be repaired before it gets
+// there — 33 calls in one session arrived this way and every one of them drew
+// the escape on screen.
+func TestGateNoticeRepairsADoubleEscapedNeed(t *testing.T) {
+	prov := &scriptedTurns{turns: [][]provider.Chunk{
+		{toolCallChunk("t0", "todo_write", `{"todos":[{"step_id":"n1","content":"item one","status":"in_progress"}]}`), {Type: provider.ChunkDone}},
+		{toolCallChunk("w1", "write_file", `{"path":"notes/item-one.md"}`), {Type: provider.ChunkDone}},
+		{toolCallChunk("g1", "await_user", `{"step_id":"n1","need":"**Batch** the rest,\\n\\nor stop here?"}`), {Type: provider.ChunkDone}},
+		textTurn("Here is item one."),
+	}}
+	c, done, notices := readinessGatedController(t, prov)
+
+	c.Submit("walk the list with me")
+	<-done
+
+	for _, n := range notices() {
+		if n.Code != event.NoticeCodeAwaitUser {
+			continue
+		}
+		if n.Detail != "**Batch** the rest,\n\nor stop here?" {
+			t.Fatalf("detail = %q, want the break the model meant", n.Detail)
+		}
+		if strings.Contains(n.Text, `\`) {
+			t.Fatalf("text = %q, want no escape left in it", n.Text)
+		}
+		return
+	}
+	t.Fatalf("no await_user notice among %+v", notices())
+}
+
 // readinessGatedController wires the same scripted-agent harness the other
 // readiness tests use, plus the two things a hand-back needs: the tool itself,
 // and somebody to hand back to.

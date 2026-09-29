@@ -44,5 +44,18 @@ func decodeUserGate(args json.RawMessage) UserGate {
 	if len(args) == 0 || json.Unmarshal(args, &payload) != nil {
 		return UserGate{}
 	}
-	return UserGate{StepID: strings.TrimSpace(payload.StepID), Need: strings.TrimSpace(payload.Need)}
+	return UserGate{StepID: strings.TrimSpace(payload.StepID), Need: strings.TrimSpace(repairBreaks(payload.Need))}
+}
+
+// A model writing a multi-line `need` sometimes escapes the break twice: the
+// value then carries a backslash and an `n` where the break belongs, and the
+// notice draws the two characters instead of the break. No line of prose has
+// another reading for that pair, so it is repaired where the need is read
+// rather than in each frontend that has to draw it.
+func repairBreaks(s string) string {
+	if !strings.Contains(s, `\`) {
+		return s
+	}
+	// Longest first: a `\r\n` must not be read as its `\r` half and a lone `n`.
+	return strings.NewReplacer(`\r\n`, "\n", `\n`, "\n").Replace(s)
 }
